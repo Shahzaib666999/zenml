@@ -16,12 +16,12 @@ The stack store defines exactly where and how stacks are persisted across their
 life.
 """
 
-from zenml.stack_stores.base_stack_store import BaseStackStore
-from zenml.stack_stores.local_stack_store import LocalStackStore
-from zenml.stack_stores.sql_stack_store import SqlStackStore
+from zenml.zen_stores.base_stack_store import BaseZenStore
+from zenml.zen_stores.local_stack_store import LocalZenStore
+from zenml.zen_stores.sql_stack_store import SqlZenStore
 
 __all__ = [
-    "BaseStackStore",
-    "LocalStackStore",
-    "SqlStackStore",
+    "BaseZenStore",
+    "LocalZenStore",
+    "SqlZenStore",
 ]
