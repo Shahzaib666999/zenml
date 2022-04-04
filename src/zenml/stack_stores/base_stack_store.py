@@ -65,12 +65,18 @@ class BaseStackStore(ABC):
 
     @abstractmethod
     def initialize(
-        self, url: str, *args: Any, **kwargs: Any
+        self,
+        url: str,
+        skip_default_stack: bool = False,
+        *args: Any,
+        **kwargs: Any,
     ) -> "BaseStackStore":
         """Initialize the store.
 
         Args:
             url: The URL of the store.
+            skip_default_stack: If True, the creation of the default stack will
+                be skipped.
             *args: Additional arguments to pass to the concrete store
                 implementation.
             **kwargs: Additional keyword arguments to pass to the concrete
@@ -79,7 +85,7 @@ class BaseStackStore(ABC):
         Returns:
             The initialized concrete store instance.
         """
-        if self.is_empty():
+        if not skip_default_stack and self.is_empty():
             logger.info("Initializing store...")
             self.register_default_stack()
             self.create_default_user()

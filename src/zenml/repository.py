@@ -23,11 +23,9 @@ from typing import Any, Dict, List, Optional, Type, cast
 import yaml
 from pydantic import BaseModel, ValidationError
 
-from zenml.config.global_config import (
-    BaseGlobalConfiguration,
-    ConfigProfile,
-    GlobalConfig,
-)
+from zenml.config.base_config import BaseConfiguration
+from zenml.config.global_config import GlobalConfiguration
+from zenml.config.profile_config import ProfileConfiguration
 from zenml.constants import ENV_ZENML_REPOSITORY_PATH, REPOSITORY_DIRECTORY_NAME
 from zenml.enums import StackComponentFlavor, StackComponentType, StoreType
 from zenml.environment import Environment
@@ -145,7 +143,7 @@ class RepositoryMetaClass(ABCMeta):
         return cls._global_repository
 
 
-class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
+class Repository(BaseConfiguration, metaclass=RepositoryMetaClass):
     """ZenML repository class.
 
     The ZenML repository manages configuration options for ZenML stacks as well
@@ -155,7 +153,7 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
     def __init__(
         self,
         root: Optional[Path] = None,
-        profile: Optional[ConfigProfile] = None,
+        profile: Optional[ProfileConfiguration] = None,
     ) -> None:
         """Initializes the global repository instance.
 
@@ -194,7 +192,7 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
         """
 
         self._root: Optional[Path] = None
-        self._profile: Optional[ConfigProfile] = None
+        self._profile: Optional[ProfileConfiguration] = None
         self.__config: Optional[RepositoryConfiguration] = None
 
         # The repository constructor is called with a custom profile only when
@@ -251,7 +249,7 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
 
         self._root = self.find_repository(root, enable_warnings=True)
 
-        global_cfg = GlobalConfig()
+        global_cfg = GlobalConfiguration()
         new_profile = self._profile
 
         if not self._root:
@@ -288,7 +286,7 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
         # profile
         self._sanitize_config()
 
-    def _set_active_profile(self, profile: ConfigProfile) -> None:
+    def _set_active_profile(self, profile: ProfileConfiguration) -> None:
         """Set the supplied configuration profile as the active profile for
         this repository.
 
@@ -332,7 +330,7 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
         if not self.__config:
             return
 
-        global_cfg = GlobalConfig()
+        global_cfg = GlobalConfiguration()
 
         # Sanitize the repository active profile
         if self.__config.active_profile_name != self.active_profile_name:
@@ -385,7 +383,9 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
         self._write_config()
 
     @staticmethod
-    def _migrate_legacy_repository(config_file: str) -> Optional[ConfigProfile]:
+    def _migrate_legacy_repository(
+        config_file: str,
+    ) -> Optional[ProfileConfiguration]:
         """Migrate a legacy repository configuration to the new format and
         create a new Profile out of it.
 
@@ -397,6 +397,8 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
             if a legacy repository configuration was not found at the supplied
             path.
         """
+        from zenml.console import console
+
         if not fileio.file_exists(config_file):
             return None
 
@@ -412,28 +414,30 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
         profile_name = f"legacy-repository-{random.getrandbits(32):08x}"
 
         # a legacy repository configuration was detected
-        logger.warning(
-            "A legacy ZenML repository with locally configured stacks was "
-            "found at `%s`.\n"
-            "The stacks configured in this repository will be automatically "
-            "migrated to a newly created profile: `%s`.\n\n"
-            "If you no longer need to use the stacks configured in this "
-            "repository, please delete the profile using the following "
-            "command:\n\n"
-            "`zenml profile delete %s`\n\n"
-            "This warning will not be shown again.",
-            config_path,
-            profile_name,
-            profile_name,
+        console.print(
+            f"A legacy ZenML repository with locally configured stacks was "
+            f"found at '{config_path}'.\n"
+            f"Beginning with ZenML 0.7.0, stacks are no longer stored inside "
+            f"the ZenML repository root, they are stored globally using the "
+            f"newly introduced concept of Profiles.\n\n"
+            f"The stacks configured in this repository will be automatically "
+            f"migrated to a newly created profile: '{profile_name}'.\n\n"
+            f"If you no longer need to use the stacks configured in this "
+            f"repository, please delete the profile using the following "
+            f"command:\n\n"
+            f"'zenml profile delete {profile_name}'\n\n"
+            f"More information about Profiles can be found at "
+            f"https://docs.zenml.io.\n"
+            f"This warning will not be shown again for this Repository."
         )
 
         stack_data = legacy_config.get_stack_data()
         store = LocalStackStore()
         store.initialize(url=config_path, stack_data=stack_data)
         store._write_store()
-        profile = ConfigProfile(
+        profile = ProfileConfiguration(
             name=profile_name,
-            store_url=config_path,
+            store_url=store.url,
             active_stack=legacy_config.active_stack_name,
         )
 
@@ -443,7 +447,7 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
         )
         new_config_dict = json.loads(new_config.json())
         yaml_utils.write_yaml(config_file, new_config_dict)
-        GlobalConfig().add_or_update_profile(profile)
+        GlobalConfiguration().add_or_update_profile(profile)
 
         return profile
 
@@ -509,7 +513,9 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
         }.get(type)
 
     @staticmethod
-    def create_store(profile: ConfigProfile) -> BaseStackStore:
+    def create_store(
+        profile: ProfileConfiguration, skip_default_stack: bool = False
+    ) -> BaseStackStore:
         """Create the repository persistance back-end store from a configuration
         profile.
 
@@ -519,6 +525,8 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
         Args:
             profile: The configuration profile to use for persisting the
                 repository information.
+            skip_default_stack: If True, the creation of the default stack in
+                the store will be skipped.
 
         Returns:
             The initialized repository store.
@@ -542,7 +550,9 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
 
         if store_class.is_valid_url(profile.store_url):
             store = store_class()
-            store.initialize(url=profile.store_url)
+            store.initialize(
+                url=profile.store_url, skip_default_stack=skip_default_stack
+            )
             return store
 
         raise ValueError(
@@ -631,7 +641,7 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
         Raises:
             KeyError: If the profile with the given name does not exist.
         """
-        global_cfg = GlobalConfig()
+        global_cfg = GlobalConfiguration()
         profile = global_cfg.get_profile(profile_name)
         if not profile:
             raise KeyError(f"Profile '{profile_name}' not found.")
@@ -648,7 +658,7 @@ class Repository(BaseGlobalConfiguration, metaclass=RepositoryMetaClass):
             global_cfg.activate_profile(profile_name)
 
     @property
-    def active_profile(self) -> ConfigProfile:
+    def active_profile(self) -> ProfileConfiguration:
         """Return the profile set as active for the repository.
 
         Returns:

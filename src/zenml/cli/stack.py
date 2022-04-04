@@ -19,7 +19,7 @@ import click
 
 from zenml.cli import utils as cli_utils
 from zenml.cli.cli import cli
-from zenml.config.global_config import GlobalConfig
+from zenml.config.global_config import GlobalConfiguration
 from zenml.console import console
 from zenml.enums import StackComponentType
 from zenml.exceptions import ProvisioningError
@@ -68,6 +68,14 @@ def stack() -> None:
     required=False,
 )
 @click.option(
+    "-x",
+    "--secrets_manager",
+    "secrets_manager_name",
+    help="Name of the secrets manager for this stack.",
+    type=str,
+    required=False,
+)
+@click.option(
     "-s",
     "--step_operator",
     "step_operator_name",
@@ -81,6 +89,7 @@ def register_stack(
     artifact_store_name: str,
     orchestrator_name: str,
     container_registry_name: Optional[str] = None,
+    secrets_manager_name: Optional[str] = None,
     step_operator_name: Optional[str] = None,
 ) -> None:
     """Register a stack."""
@@ -107,6 +116,14 @@ def register_stack(
             ] = repo.get_stack_component(
                 StackComponentType.CONTAINER_REGISTRY,
                 name=container_registry_name,
+            )
+
+        if secrets_manager_name:
+            stack_components[
+                StackComponentType.SECRETS_MANAGER
+            ] = repo.get_stack_component(
+                StackComponentType.SECRETS_MANAGER,
+                name=secrets_manager_name,
             )
 
         if step_operator_name:
@@ -201,7 +218,7 @@ def delete_stack(stack_name: str) -> None:
 
     with console.status(f"Deleting stack '{stack_name}'...\n"):
 
-        cfg = GlobalConfig()
+        cfg = GlobalConfiguration()
         repo = Repository()
 
         if cfg.active_stack_name == stack_name:

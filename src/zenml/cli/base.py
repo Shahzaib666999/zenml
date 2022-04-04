@@ -19,7 +19,7 @@ import click
 
 from zenml.cli.cli import cli
 from zenml.cli.utils import confirmation, declare, error
-from zenml.config.global_config import GlobalConfig
+from zenml.config.global_config import GlobalConfiguration
 from zenml.console import console
 from zenml.exceptions import InitializationException
 from zenml.repository import Repository
@@ -51,14 +51,15 @@ def init(path: Optional[Path]) -> None:
         except InitializationException as e:
             error(f"{e}")
 
-    cfg = GlobalConfig()
+    cfg = GlobalConfiguration()
     declare(
         f"The local active profile was initialized to "
         f"'{cfg.active_profile_name}' and the local active stack to "
         f"'{cfg.active_stack_name}'. This local configuration will only take "
         f"effect when you're running ZenML from the initialized repository "
         f"root, or from a subdirectory. For more information on profile "
-        f"and stack configuration, please run 'zenml profile explain'."
+        f"and stack configuration, please visit "
+        f"https://docs.zenml.io."
     )
 
 
